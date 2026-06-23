@@ -1,0 +1,48 @@
+# k8s/overlays/staging/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: quant
+
+resources:
+  - ../../base
+
+# Override image tags (filled in by scripts/deploy.sh at deploy time)
+images:
+  - name: your-registry/quant-api
+    newTag: latest
+  - name: your-registry/quant-frontend
+    newTag: latest
+
+# Staging: 2 replicas, debug logging, relaxed resource limits
+patches:
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+    target:
+      kind: Deployment
+      name: api
+
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: LOG_LEVEL
+            value: debug
+          - name: REDIS_URL
+            valueFrom:
+              configMapKeyRef:
+                name: quant-config
+                key: REDIS_URL
+          - name: DATABASE_URL
+            valueFrom:
+              configMapKeyRef:
+                name: quant-config
+                key: DATABASE_URL
+    target:
+      kind: Deployment
+      name: api
+
+commonLabels:
+  environment: staging

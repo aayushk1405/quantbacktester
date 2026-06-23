@@ -1,0 +1,22 @@
+# k8s/base/namespace.yaml
+# All resources live in the "quant" namespace for clean isolation.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: quant
+  labels:
+    app.kubernetes.io/part-of: quant-backtest
+---
+# ConfigMap holds non-secret environment config.
+# Secrets (DB passwords, API keys) go in a Secret or an external
+# secrets manager (e.g. AWS Secrets Manager + External Secrets Operator).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: quant-config
+  namespace: quant
+data:
+  REDIS_URL:    "redis://redis-service:6379/0"
+  DATABASE_URL: "postgresql+asyncpg://quant:quant@postgres-service:5432/quant"
+  DATA_DIR:     "/data"
+  LOG_LEVEL:    "info"

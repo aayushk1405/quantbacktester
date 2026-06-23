@@ -1,0 +1,21 @@
+# k8s/base/kustomization.yaml
+# Kustomize base — applies all manifests in order.
+# Usage:
+#   kubectl apply -k k8s/base/              # bare base
+#   kubectl apply -k k8s/overlays/staging/  # staging overlay
+#   kubectl apply -k k8s/overlays/prod/     # production overlay
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: quant
+
+resources:
+  - namespace.yaml
+  - infra.yaml
+  - api.yaml
+
+# Common labels applied to every resource
+commonLabels:
+  app.kubernetes.io/part-of:    quant-backtest
+  app.kubernetes.io/managed-by: kustomize

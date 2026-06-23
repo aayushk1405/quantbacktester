@@ -1,0 +1,74 @@
+# k8s/overlays/prod/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: quant
+
+resources:
+  - ../../base
+
+images:
+  - name: your-registry/quant-api
+    newTag: latest
+  - name: your-registry/quant-frontend
+    newTag: latest
+
+# Prod: 4 replicas, info logging, tighter resource limits, PodDisruptionBudget
+patches:
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 4
+    target:
+      kind: Deployment
+      name: api
+
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: "1000m"
+            memory: "1Gi"
+          limits:
+            cpu: "4000m"
+            memory: "4Gi"
+    target:
+      kind: Deployment
+      name: api
+
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: LOG_LEVEL
+            value: info
+          - name: REDIS_URL
+            valueFrom:
+              configMapKeyRef:
+                name: quant-config
+                key: REDIS_URL
+          - name: DATABASE_URL
+            valueFrom:
+              secretKeyRef:
+                name: quant-secrets
+                key: DATABASE_URL
+    target:
+      kind: Deployment
+      name: api
+
+# Ensure at least 2 pods are always available during rolling updates
+- patch: |-
+    apiVersion: policy/v1
+    kind: PodDisruptionBudget
+    metadata:
+      name: api-pdb
+      namespace: quant
+    spec:
+      minAvailable: 2
+      selector:
+        matchLabels:
+          app: api
+
+commonLabels:
+  environment: production

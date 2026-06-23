@@ -1,0 +1,194 @@
+# k8s/base/frontend.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: quant
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: your-registry/quant-frontend:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests: { cpu: "100m", memory: "64Mi" }
+            limits:   { cpu: "200m", memory: "128Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: quant
+spec:
+  selector:
+    app: frontend
+  ports:
+    - port: 80
+      targetPort: 80
+---
+# k8s/base/redis.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: quant
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          args: ["--save", "60", "1", "--loglevel", "warning"]
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "512Mi" }
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+      volumes:
+        - name: redis-data
+          emptyDir: {}          # swap for PVC in production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: quant
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+---
+# k8s/base/postgres.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: quant
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name:  POSTGRES_USER
+              value: quant
+            - name:  POSTGRES_PASSWORD
+              value: quant        # use a Secret in production!
+            - name:  POSTGRES_DB
+              value: quant
+          resources:
+            requests: { cpu: "250m", memory: "256Mi" }
+            limits:   { cpu: "1000m", memory: "1Gi" }
+          volumeMounts:
+            - name: pg-data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: pg-data
+          persistentVolumeClaim:
+            claimName: pg-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: quant
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+---
+# k8s/base/pvc.yaml — Persistent Volume Claims
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-pvc
+  namespace: quant
+spec:
+  accessModes: [ReadWriteMany]   # NFS or EFS in cloud environments
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pg-pvc
+  namespace: quant
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 20Gi
+---
+# k8s/base/ingress.yaml — Nginx Ingress with TLS
+#  Assumes cert-manager is installed and a ClusterIssuer named
+#  "letsencrypt-prod" is configured.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: quant-ingress
+  namespace: quant
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target:      /
+    nginx.ingress.kubernetes.io/proxy-read-timeout:  "3600"   # long WS connections
+    nginx.ingress.kubernetes.io/proxy-send-timeout:  "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering:     "off"    # stream WS frames
+    cert-manager.io/cluster-issuer:                  "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [quant.yourdomain.com]
+      secretName: quant-tls
+  rules:
+    - host: quant.yourdomain.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api-service
+                port: { number: 8000 }
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: api-service
+                port: { number: 8000 }
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend-service
+                port: { number: 80 }
