@@ -89,8 +89,8 @@ quant-backtest/
 ### 1. Clone and set up environment
 
 ```bash
-git clone https://github.com/yourname/quant-backtest.git
-cd quant-backtest
+git clone https://github.com/yourname/quantbacktester.git
+cd quantbacktester
 cp .env.example .env
 ```
 
