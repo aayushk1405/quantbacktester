@@ -1,0 +1,12 @@
+# monitoring/grafana/dashboards/dashboard.yaml
+# Tells Grafana to load all .json files from this directory on startup.
+
+apiVersion: 1
+
+providers:
+  - name: QuantEngine
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards

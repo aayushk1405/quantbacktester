@@ -1,0 +1,27 @@
+# monitoring/prometheus.yml
+# Prometheus configuration for the Quant Backtest stack.
+#
+# FastAPI exposes /metrics via the prometheus-fastapi-instrumentator
+# library (add to requirements.txt and call instrument(app).expose(app)).
+
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "quant-api"
+    static_configs:
+      - targets: ["api:8000"]
+    metrics_path: /metrics
+
+  - job_name: "redis"
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  - job_name: "postgres"
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
