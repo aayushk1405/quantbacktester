@@ -1,0 +1,36 @@
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# C++ Build Artifacts
+build/
+*.o
+*.out
+*.dylib
+*.so
+*.a
+
+# Python / FastAPI
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Node / React Frontend
+node_modules/
+dist/
+build/
+.eslintcache
+
+# Environment Variables
+.env
+.env.local
+
+# Local Data
+data/*.csv
+data/*.db
