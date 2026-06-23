@@ -1,0 +1,128 @@
+# docker-compose.yml — Complete local development stack.
+#
+# Services:
+#   api        → FastAPI + C++ engine (hot-reload with volume mount)
+#   frontend   → Vite dev server (hot-reload)
+#   redis      → Task queue + pub/sub
+#   postgres   → Long-term result storage
+#   prometheus → Metrics scraping
+#   grafana    → Dashboards
+#
+# Usage:
+#   docker compose up --build
+#   # Then open: http://localhost:5173  (React UI)
+#   #            http://localhost:8000/docs  (Swagger API)
+#   #            http://localhost:3001  (Grafana)
+
+version: "3.9"
+
+services:
+
+  # ── C++ build + FastAPI ────────────────────────────────────
+  #  Builds BOTH stages: cpp-builder (compiles the .so) then
+  #  runtime (installs Python deps + copies the .so in).
+  #  No `target:` override — Docker builds the full multi-stage file.
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      REDIS_URL:    redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://quant:quant@postgres:5432/quant
+      DATA_DIR:     /data
+      LOG_LEVEL:    debug
+    volumes:
+      - ./api:/app/api:ro           # live-reload Python changes
+      - ./data:/data                # shared data directory
+    depends_on:
+      redis:    { condition: service_healthy }
+      postgres: { condition: service_healthy }
+    command: >
+      uvicorn api.main:app
+        --host 0.0.0.0 --port 8000
+        --reload --reload-dir /app/api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 10s
+      timeout:  5s
+      retries:  5
+
+  # ── React (dev server) ─────────────────────────────────────
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules          # anonymous volume prevents host override
+    environment:
+      VITE_API_URL: http://localhost:8000
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      - api
+
+  # ── Redis ─────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --save 60 1
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test:     ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout:  3s
+      retries:  5
+
+  # ── PostgreSQL ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER:     quant
+      POSTGRES_PASSWORD: quant
+      POSTGRES_DB:       quant
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test:     ["CMD-SHELL", "pg_isready -U quant"]
+      interval: 5s
+      timeout:  3s
+      retries:  10
+
+  # ── Prometheus ─────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+
+  # ── Grafana ────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED:  "true"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+
+volumes:
+  redis_data:
+  pg_data:
+  grafana_data:
